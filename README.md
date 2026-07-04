@@ -9,6 +9,7 @@ The pipeline uses:
 - corrected DINOv3 LoRA target modules: `q_proj`, `v_proj`
 - Stratified 5-fold cross validation
 - OOF Macro-F1 evaluation
+- early stopping on validation Macro-F1
 - class imbalance handling
 - TTA + fold ensemble for final `submission.csv`
 
@@ -109,7 +110,9 @@ python train.py \
   --batch-size 4 \
   --valid-batch-size 8 \
   --grad-accum 4 \
-  --use-class-weights
+  --use-class-weights \
+  --early-stopping-patience 3 \
+  --early-stopping-min-delta 1e-4
 ```
 
 For a stronger GPU run, try:
@@ -123,7 +126,34 @@ python train.py \
   --batch-size 2 \
   --valid-batch-size 4 \
   --grad-accum 8 \
-  --use-class-weights
+  --use-class-weights \
+  --early-stopping-patience 4 \
+  --early-stopping-min-delta 1e-4
+```
+
+## Early stopping
+
+Early stopping monitors **validation Macro-F1** for each fold.
+
+Defaults:
+
+```bash
+--early-stopping-patience 3
+--early-stopping-min-delta 1e-4
+```
+
+Meaning:
+
+- `patience=3`: stop a fold after 3 consecutive epochs without meaningful Macro-F1 improvement.
+- `min_delta=1e-4`: improvement must be greater than `0.0001` to reset patience.
+- Set `--early-stopping-patience 0` to disable early stopping.
+
+The best checkpoint for each fold is still saved as:
+
+```text
+outputs_dinov3_lora/fold0_best.pt
+outputs_dinov3_lora/fold1_best.pt
+...
 ```
 
 ## Predict final submission
