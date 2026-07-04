@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.so
+.env
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Dataset and outputs
+BDC2026/
+dataset/
+data/
+outputs*/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+submission_*.csv
+oof_*.csv
+test_predictions_debug.csv
+train_folds.csv
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
