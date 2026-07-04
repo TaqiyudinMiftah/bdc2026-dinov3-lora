@@ -16,7 +16,7 @@ class TrainConfig:
     num_classes: int = 3
 
     image_size: int = 224
-    epochs: int = 8
+    epochs: int = 20
     batch_size: int = 4
     valid_batch_size: int = 8
     grad_accum: int = 4
@@ -29,8 +29,16 @@ class TrainConfig:
     max_grad_norm: float = 1.0
     label_smoothing: float = 0.05
 
-    early_stopping_patience: int = 3
+    # Early stopping monitors validation Macro-F1.
+    early_stopping_patience: int = 6
     early_stopping_min_delta: float = 1e-4
+
+    # LR scheduler. Default uses validation loss plateau to reduce LR.
+    scheduler: str = "plateau"  # plateau or cosine
+    plateau_factor: float = 0.5
+    plateau_patience: int = 2
+    plateau_threshold: float = 1e-4
+    min_lr: float = 1e-7
 
     lora_r: int = 16
     lora_alpha: int = 32
