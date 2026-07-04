@@ -95,7 +95,6 @@ def make_criterion(labels, cfg, device):
         print("Class counts:", np.bincount(labels, minlength=cfg.num_classes))
         print("Class weights:", weights_np)
         weights = torch.tensor(weights_np, dtype=torch.float32, device=device)
-
     return nn.CrossEntropyLoss(weight=weights, label_smoothing=cfg.label_smoothing)
 
 
@@ -110,17 +109,12 @@ def train_one_epoch(model, loader, optimizer, scheduler, scaler, criterion, cfg,
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
-        with torch.autocast(
-            device_type="cuda",
-            dtype=torch.float16,
-            enabled=(cfg.use_amp and device.type == "cuda"),
-        ):
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(cfg.use_amp and device.type == "cuda")):
             logits = model(images)
             loss = criterion(logits, labels) / cfg.grad_accum
 
         scaler.scale(loss).backward()
         should_step = ((step + 1) % cfg.grad_accum == 0) or ((step + 1) == len(loader))
-
         if should_step:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
@@ -145,16 +139,10 @@ def valid_one_epoch(model, loader, criterion, cfg, device):
     all_probs = []
     all_labels = []
 
-    pbar = tqdm(loader, desc="Valid", leave=False)
-    for images, labels in pbar:
+    for images, labels in tqdm(loader, desc="Valid", leave=False):
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
-
-        with torch.autocast(
-            device_type="cuda",
-            dtype=torch.float16,
-            enabled=(cfg.use_amp and device.type == "cuda"),
-        ):
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(cfg.use_amp and device.type == "cuda")):
             logits = model(images)
             loss = criterion(logits, labels)
 
@@ -217,11 +205,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
     num_update_steps_per_epoch = math.ceil(len(train_loader) / cfg.grad_accum)
     total_training_steps = cfg.epochs * num_update_steps_per_epoch
     warmup_steps = int(cfg.warmup_ratio * total_training_steps)
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_training_steps,
-    )
+    scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_training_steps)
     scaler = torch.cuda.amp.GradScaler(enabled=(cfg.use_amp and device.type == "cuda"))
 
     best_f1 = -1.0
@@ -235,8 +219,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
 
         print(
             f"Fold {fold} | Epoch {epoch}/{cfg.epochs} | "
-            f"train_loss={train_loss:.5f} | valid_loss={valid_loss:.5f} | "
-            f"macro_f1={valid_f1:.5f} | "
+            f"train_loss={train_loss:.5f} | valid_loss={valid_loss:.5f} | macro_f1={valid_f1:.5f} | "
             f"F1 Rec={per_class_f1[0]:.4f} | F1 Elec={per_class_f1[1]:.4f} | F1 Org={per_class_f1[2]:.4f}"
         )
 
@@ -265,14 +248,12 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
             print(f"Saved best fold {fold}: macro_f1={best_f1:.5f}")
 
     pd.DataFrame(history).to_csv(cfg.output_dir / f"fold{fold}_history.csv", index=False)
-
     checkpoint = torch.load(ckpt_path, map_location="cpu")
     model.load_state_dict(checkpoint["model"], strict=False)
     valid_loss, valid_f1, per_class_f1, val_probs, val_labels = valid_one_epoch(model, valid_loader, criterion, cfg, device)
     val_indices = val_df["original_index"].values
 
     print(f"Best Fold {fold}: epoch={best_epoch}, macro_f1={best_f1:.5f}")
-
     del model, optimizer, scheduler, scaler
     gc.collect()
     torch.cuda.empty_cache()
@@ -332,7 +313,7 @@ def main():
     cfg_dict = {
         k: str(v) if isinstance(v, Path) else v
         for k, v in cfg.__dict__.items()
-        if not k.startswith("_")
+        if not k.startswith("_") and k != "hf_token"
     }
     with open(cfg.output_dir / "config_used.json", "w") as f:
         json.dump(cfg_dict, f, indent=2)
