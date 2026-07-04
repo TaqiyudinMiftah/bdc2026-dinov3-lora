@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument("--output-dir", type=Path, default=Path("./outputs_dinov3_lora"))
     parser.add_argument("--model-name", type=str, default="facebook/dinov3-vitl16-pretrain-lvd1689m")
     parser.add_argument("--image-size", type=int, default=224)
-    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--valid-batch-size", type=int, default=8)
     parser.add_argument("--grad-accum", type=int, default=4)
@@ -46,8 +46,15 @@ def parse_args():
     parser.add_argument("--lr-head", type=float, default=7e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--label-smoothing", type=float, default=0.05)
-    parser.add_argument("--early-stopping-patience", type=int, default=3)
+    parser.add_argument("--early-stopping-patience", type=int, default=6)
     parser.add_argument("--early-stopping-min-delta", type=float, default=1e-4)
+
+    parser.add_argument("--scheduler", type=str, default="plateau", choices=["plateau", "cosine"])
+    parser.add_argument("--plateau-factor", type=float, default=0.5)
+    parser.add_argument("--plateau-patience", type=int, default=2)
+    parser.add_argument("--plateau-threshold", type=float, default=1e-4)
+    parser.add_argument("--min-lr", type=float, default=1e-7)
+
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -79,6 +86,11 @@ def cfg_from_args(args):
     cfg.label_smoothing = args.label_smoothing
     cfg.early_stopping_patience = args.early_stopping_patience
     cfg.early_stopping_min_delta = args.early_stopping_min_delta
+    cfg.scheduler = args.scheduler
+    cfg.plateau_factor = args.plateau_factor
+    cfg.plateau_patience = args.plateau_patience
+    cfg.plateau_threshold = args.plateau_threshold
+    cfg.min_lr = args.min_lr
     cfg.lora_r = args.lora_r
     cfg.lora_alpha = args.lora_alpha
     cfg.lora_dropout = args.lora_dropout
@@ -102,7 +114,42 @@ def make_criterion(labels, cfg, device):
     return nn.CrossEntropyLoss(weight=weights, label_smoothing=cfg.label_smoothing)
 
 
-def train_one_epoch(model, loader, optimizer, scheduler, scaler, criterion, cfg, device, epoch):
+def get_current_lrs(optimizer):
+    return [group["lr"] for group in optimizer.param_groups]
+
+
+def format_lrs(lrs):
+    return ", ".join(f"{lr:.2e}" for lr in lrs)
+
+
+def build_scheduler(optimizer, train_loader, cfg):
+    if cfg.scheduler == "cosine":
+        num_update_steps_per_epoch = math.ceil(len(train_loader) / cfg.grad_accum)
+        total_training_steps = cfg.epochs * num_update_steps_per_epoch
+        warmup_steps = int(cfg.warmup_ratio * total_training_steps)
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_training_steps,
+        )
+        return scheduler, "batch"
+
+    if cfg.scheduler == "plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=cfg.plateau_factor,
+            patience=cfg.plateau_patience,
+            threshold=cfg.plateau_threshold,
+            threshold_mode="abs",
+            min_lr=cfg.min_lr,
+        )
+        return scheduler, "epoch"
+
+    raise ValueError(f"Unknown scheduler: {cfg.scheduler}")
+
+
+def train_one_epoch(model, loader, optimizer, scheduler, scheduler_step_mode, scaler, criterion, cfg, device, epoch):
     model.train()
     running_loss = 0.0
     total = 0
@@ -125,12 +172,13 @@ def train_one_epoch(model, loader, optimizer, scheduler, scaler, criterion, cfg,
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
-            scheduler.step()
+            if scheduler_step_mode == "batch":
+                scheduler.step()
 
         bs = labels.size(0)
         running_loss += loss.item() * cfg.grad_accum * bs
         total += bs
-        pbar.set_postfix(loss=running_loss / max(total, 1))
+        pbar.set_postfix(loss=running_loss / max(total, 1), lr=format_lrs(get_current_lrs(optimizer)))
 
     return running_loss / max(total, 1)
 
@@ -208,13 +256,18 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
         count_trainable_params(model)
 
     optimizer = get_optimizer(model, cfg)
+    scheduler, scheduler_step_mode = build_scheduler(optimizer, train_loader, cfg)
     criterion = make_criterion(trn_df["label"].values, cfg, device)
-
-    num_update_steps_per_epoch = math.ceil(len(train_loader) / cfg.grad_accum)
-    total_training_steps = cfg.epochs * num_update_steps_per_epoch
-    warmup_steps = int(cfg.warmup_ratio * total_training_steps)
-    scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_training_steps)
     scaler = torch.cuda.amp.GradScaler(enabled=(cfg.use_amp and device.type == "cuda"))
+
+    print(f"Scheduler: {cfg.scheduler}")
+    if cfg.scheduler == "plateau":
+        print(
+            "ReduceLROnPlateau: monitor=valid_loss, "
+            f"factor={cfg.plateau_factor}, patience={cfg.plateau_patience}, "
+            f"threshold={cfg.plateau_threshold}, min_lr={cfg.min_lr}"
+        )
+    print(f"Initial LRs: {format_lrs(get_current_lrs(optimizer))}")
 
     best_f1 = -1.0
     best_epoch = -1
@@ -223,28 +276,36 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
     history = []
 
     for epoch in range(1, cfg.epochs + 1):
-        train_loss = train_one_epoch(model, train_loader, optimizer, scheduler, scaler, criterion, cfg, device, epoch)
+        train_loss = train_one_epoch(
+            model,
+            train_loader,
+            optimizer,
+            scheduler,
+            scheduler_step_mode,
+            scaler,
+            criterion,
+            cfg,
+            device,
+            epoch,
+        )
         valid_loss, valid_f1, per_class_f1, val_probs, val_labels = valid_one_epoch(model, valid_loader, criterion, cfg, device)
+
+        lr_before = get_current_lrs(optimizer)
+        if scheduler_step_mode == "epoch":
+            scheduler.step(valid_loss)
+        lr_after = get_current_lrs(optimizer)
 
         print(
             f"Fold {fold} | Epoch {epoch}/{cfg.epochs} | "
             f"train_loss={train_loss:.5f} | valid_loss={valid_loss:.5f} | macro_f1={valid_f1:.5f} | "
-            f"F1 Rec={per_class_f1[0]:.4f} | F1 Elec={per_class_f1[1]:.4f} | F1 Org={per_class_f1[2]:.4f}"
+            f"F1 Rec={per_class_f1[0]:.4f} | F1 Elec={per_class_f1[1]:.4f} | F1 Org={per_class_f1[2]:.4f} | "
+            f"LR={format_lrs(lr_after)}"
         )
+        if lr_after != lr_before:
+            print(f"LR reduced: {format_lrs(lr_before)} -> {format_lrs(lr_after)}")
 
-        history.append({
-            "fold": fold,
-            "epoch": epoch,
-            "train_loss": train_loss,
-            "valid_loss": valid_loss,
-            "macro_f1": valid_f1,
-            "f1_recyclable": float(per_class_f1[0]),
-            "f1_electronic": float(per_class_f1[1]),
-            "f1_organic": float(per_class_f1[2]),
-            "epochs_without_improvement": epochs_without_improvement,
-        })
-
-        if is_improved(valid_f1, best_f1, cfg.early_stopping_min_delta):
+        improved = is_improved(valid_f1, best_f1, cfg.early_stopping_min_delta)
+        if improved:
             best_f1 = valid_f1
             best_epoch = epoch
             epochs_without_improvement = 0
@@ -255,6 +316,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
                 "model": get_trainable_state_dict(model),
                 "lora_target_modules": cfg.lora_target_modules,
                 "image_size": cfg.image_size,
+                "scheduler": cfg.scheduler,
                 "early_stopping_patience": cfg.early_stopping_patience,
                 "early_stopping_min_delta": cfg.early_stopping_min_delta,
             }, ckpt_path)
@@ -266,6 +328,20 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
                 f"{cfg.early_stopping_patience} epochs "
                 f"(min_delta={cfg.early_stopping_min_delta})."
             )
+
+        history.append({
+            "fold": fold,
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "valid_loss": valid_loss,
+            "macro_f1": valid_f1,
+            "f1_recyclable": float(per_class_f1[0]),
+            "f1_electronic": float(per_class_f1[1]),
+            "f1_organic": float(per_class_f1[2]),
+            "lr_lora": lr_after[0],
+            "lr_head": lr_after[1] if len(lr_after) > 1 else lr_after[0],
+            "epochs_without_improvement": epochs_without_improvement,
+        })
 
         if cfg.early_stopping_patience > 0 and epochs_without_improvement >= cfg.early_stopping_patience:
             print(
