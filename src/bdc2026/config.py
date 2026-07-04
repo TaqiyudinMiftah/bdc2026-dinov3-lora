@@ -29,6 +29,9 @@ class TrainConfig:
     max_grad_norm: float = 1.0
     label_smoothing: float = 0.05
 
+    early_stopping_patience: int = 3
+    early_stopping_min_delta: float = 1e-4
+
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
