@@ -10,3 +10,5 @@ pillow
 tqdm
 gdown
 huggingface_hub
+matplotlib
+ImageHash
