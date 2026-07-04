@@ -1,0 +1,12 @@
+torch
+torchvision
+transformers>=4.56.0
+peft
+accelerate
+scikit-learn
+pandas
+numpy
+pillow
+tqdm
+gdown
+huggingface_hub
