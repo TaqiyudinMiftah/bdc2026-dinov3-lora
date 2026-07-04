@@ -34,6 +34,46 @@ Label mapping:
 
 ## Setup
 
+### Recommended: uv virtual environment
+
+Install `uv` if it is not installed yet:
+
+```bash
+pip install uv
+```
+
+Create and activate a virtual environment:
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+```
+
+For Windows PowerShell:
+
+```powershell
+uv venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+Install dependencies inside the uv environment:
+
+```bash
+uv pip install -r requirements.txt
+```
+
+Check that PyTorch can see your GPU:
+
+```bash
+python - <<'PY'
+import torch
+print('CUDA available:', torch.cuda.is_available())
+print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')
+PY
+```
+
+If you are using Colab, you can also use:
+
 ```bash
 pip install -r requirements.txt
 ```
