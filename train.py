@@ -46,6 +46,8 @@ def parse_args():
     parser.add_argument("--lr-head", type=float, default=7e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--label-smoothing", type=float, default=0.05)
+    parser.add_argument("--early-stopping-patience", type=int, default=3)
+    parser.add_argument("--early-stopping-min-delta", type=float, default=1e-4)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -75,6 +77,8 @@ def cfg_from_args(args):
     cfg.lr_head = args.lr_head
     cfg.weight_decay = args.weight_decay
     cfg.label_smoothing = args.label_smoothing
+    cfg.early_stopping_patience = args.early_stopping_patience
+    cfg.early_stopping_min_delta = args.early_stopping_min_delta
     cfg.lora_r = args.lora_r
     cfg.lora_alpha = args.lora_alpha
     cfg.lora_dropout = args.lora_dropout
@@ -162,6 +166,10 @@ def valid_one_epoch(model, loader, criterion, cfg, device):
     return running_loss / max(total, 1), macro_f1, per_class_f1, all_probs, all_labels
 
 
+def is_improved(current_score: float, best_score: float, min_delta: float) -> bool:
+    return current_score > best_score + min_delta
+
+
 def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
     print(f"\n========== Fold {fold} ==========")
     trn_df = train_df[train_df["fold"] != fold].reset_index(drop=True)
@@ -210,6 +218,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
 
     best_f1 = -1.0
     best_epoch = -1
+    epochs_without_improvement = 0
     ckpt_path = cfg.output_dir / f"fold{fold}_best.pt"
     history = []
 
@@ -232,11 +241,13 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
             "f1_recyclable": float(per_class_f1[0]),
             "f1_electronic": float(per_class_f1[1]),
             "f1_organic": float(per_class_f1[2]),
+            "epochs_without_improvement": epochs_without_improvement,
         })
 
-        if valid_f1 > best_f1:
+        if is_improved(valid_f1, best_f1, cfg.early_stopping_min_delta):
             best_f1 = valid_f1
             best_epoch = epoch
+            epochs_without_improvement = 0
             torch.save({
                 "fold": fold,
                 "best_epoch": best_epoch,
@@ -244,8 +255,24 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
                 "model": get_trainable_state_dict(model),
                 "lora_target_modules": cfg.lora_target_modules,
                 "image_size": cfg.image_size,
+                "early_stopping_patience": cfg.early_stopping_patience,
+                "early_stopping_min_delta": cfg.early_stopping_min_delta,
             }, ckpt_path)
             print(f"Saved best fold {fold}: macro_f1={best_f1:.5f}")
+        else:
+            epochs_without_improvement += 1
+            print(
+                f"No Macro-F1 improvement for {epochs_without_improvement}/"
+                f"{cfg.early_stopping_patience} epochs "
+                f"(min_delta={cfg.early_stopping_min_delta})."
+            )
+
+        if cfg.early_stopping_patience > 0 and epochs_without_improvement >= cfg.early_stopping_patience:
+            print(
+                f"Early stopping fold {fold} at epoch {epoch}. "
+                f"Best epoch={best_epoch}, best Macro-F1={best_f1:.5f}."
+            )
+            break
 
     pd.DataFrame(history).to_csv(cfg.output_dir / f"fold{fold}_history.csv", index=False)
     checkpoint = torch.load(ckpt_path, map_location="cpu")
