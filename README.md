@@ -157,6 +157,415 @@ Check login status with:
 hf auth whoami
 ```
 
+## Python command reference
+
+Run these commands from the repository root with `.venv` activated.
+
+### Check Python, PyTorch, CUDA, and GPU
+
+```bash
+python - <<'PY'
+import torch
+print('torch version:', torch.__version__)
+print('torch CUDA build:', torch.version.cuda)
+print('CUDA available:', torch.cuda.is_available())
+print('Device count:', torch.cuda.device_count())
+print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')
+PY
+```
+
+### Download dataset with gdown
+
+Use `.env` values:
+
+```bash
+python scripts/download_drive_dataset.py
+```
+
+Use explicit local Linux path:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output ./BDC2026
+```
+
+Use explicit Colab path:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output /content/BDC2026
+```
+
+Skip the automatic dataset integrity check after download:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output ./BDC2026 \
+  --no-check
+```
+
+Use strict mode so gdown stops on the first failed file:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output ./BDC2026 \
+  --strict
+```
+
+Use cookies if the server has browser cookies available:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output ./BDC2026 \
+  --use-cookies
+```
+
+Show all downloader options:
+
+```bash
+python scripts/download_drive_dataset.py --help
+```
+
+### Check dataset integrity
+
+Basic check:
+
+```bash
+python scripts/check_dataset_integrity.py --data-root ./BDC2026
+```
+
+Check and write `dataset_integrity_report.csv`:
+
+```bash
+python scripts/check_dataset_integrity.py --data-root ./BDC2026 --write-report
+```
+
+Write report to a custom path:
+
+```bash
+python scripts/check_dataset_integrity.py \
+  --data-root ./BDC2026 \
+  --write-report \
+  --report-path ./reports/dataset_integrity_report.csv
+```
+
+Change the expected test count if needed:
+
+```bash
+python scripts/check_dataset_integrity.py \
+  --data-root ./BDC2026 \
+  --expected-test-count 1458 \
+  --write-report
+```
+
+Show all integrity-checker options:
+
+```bash
+python scripts/check_dataset_integrity.py --help
+```
+
+### Run EDA and data cleaning reports
+
+Basic EDA:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs
+```
+
+EDA with more sample images per class:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs \
+  --sample-per-class 32
+```
+
+EDA with stricter image-shape review thresholds:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs \
+  --min-side 100 \
+  --aspect-low 0.40 \
+  --aspect-high 2.50
+```
+
+Detect near-duplicates with perceptual hash threshold:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs \
+  --phash-threshold 4
+```
+
+Run stronger DINO-embedding duplicate detection:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs_dino \
+  --use-dino-duplicates \
+  --embedding-batch-size 16 \
+  --embedding-neighbors 6 \
+  --embedding-sim-threshold 0.985
+```
+
+Create a cleaned copy of the dataset without modifying the original:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs \
+  --make-clean-copy \
+  --clean-output ./BDC2026_clean \
+  --copy-mode copy
+```
+
+Create a cleaned symlink copy instead of copying image bytes:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs \
+  --make-clean-copy \
+  --clean-output ./BDC2026_clean \
+  --copy-mode symlink
+```
+
+Show all EDA options:
+
+```bash
+python scripts/eda_cleaning.py --help
+```
+
+### Train models
+
+Recommended 224 baseline on GPU 0:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights \
+  --scheduler plateau \
+  --plateau-factor 0.5 \
+  --plateau-patience 2 \
+  --plateau-threshold 1e-4 \
+  --min-lr 1e-7 \
+  --early-stopping-patience 6 \
+  --early-stopping-min-delta 1e-4
+```
+
+Stronger 384 run on GPU 0:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_384 \
+  --image-size 384 \
+  --epochs 25 \
+  --batch-size 2 \
+  --valid-batch-size 4 \
+  --grad-accum 8 \
+  --use-class-weights \
+  --scheduler plateau \
+  --plateau-factor 0.5 \
+  --plateau-patience 3 \
+  --plateau-threshold 1e-4 \
+  --min-lr 1e-7 \
+  --early-stopping-patience 8 \
+  --early-stopping-min-delta 1e-4
+```
+
+Train on cleaned dataset:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026_clean \
+  --output-dir ./outputs_dinov3_lora_clean \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights
+```
+
+Use weighted sampler instead of class-weighted loss:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_sampler \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-weighted-sampler \
+  --sampler-weight-mode sqrt_inverse
+```
+
+Use cosine LR scheduler instead of plateau scheduler:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_cosine \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights \
+  --scheduler cosine
+```
+
+Disable early stopping:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_no_es \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights \
+  --early-stopping-patience 0
+```
+
+Use stronger LoRA target modules:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_qkvo \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights \
+  --lora-target-modules q_proj k_proj v_proj o_proj
+```
+
+Enable gradient checkpointing:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora_gc \
+  --image-size 384 \
+  --epochs 25 \
+  --batch-size 2 \
+  --valid-batch-size 4 \
+  --grad-accum 8 \
+  --use-class-weights \
+  --gradient-checkpointing
+```
+
+Disable AMP for debugging:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_debug_no_amp \
+  --image-size 224 \
+  --epochs 1 \
+  --batch-size 2 \
+  --valid-batch-size 4 \
+  --grad-accum 1 \
+  --use-class-weights \
+  --no-amp
+```
+
+Show all training options:
+
+```bash
+python train.py --help
+```
+
+### Predict final submission
+
+Predict with 5-fold ensemble and TTA:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python predict.py \
+  --data-root ./BDC2026 \
+  --checkpoint-dir ./outputs_dinov3_lora \
+  --output ./submission_NamaTim.csv \
+  --tta
+```
+
+Predict without TTA:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python predict.py \
+  --data-root ./BDC2026 \
+  --checkpoint-dir ./outputs_dinov3_lora \
+  --output ./submission_NamaTim_no_tta.csv
+```
+
+Predict from the 384 model directory:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python predict.py \
+  --data-root ./BDC2026 \
+  --checkpoint-dir ./outputs_dinov3_lora_384 \
+  --image-size 384 \
+  --output ./submission_NamaTim_384.csv \
+  --tta
+```
+
+Show all prediction options:
+
+```bash
+python predict.py --help
+```
+
+### Recommended end-to-end order
+
+```bash
+python scripts/check_dataset_integrity.py --data-root ./BDC2026 --write-report
+
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs
+
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --data-root ./BDC2026 \
+  --output-dir ./outputs_dinov3_lora \
+  --image-size 224 \
+  --epochs 20 \
+  --batch-size 4 \
+  --valid-batch-size 8 \
+  --grad-accum 4 \
+  --use-class-weights
+
+CUDA_VISIBLE_DEVICES=0 python predict.py \
+  --data-root ./BDC2026 \
+  --checkpoint-dir ./outputs_dinov3_lora \
+  --output ./submission_NamaTim.csv \
+  --tta
+```
+
 ## Download dataset from Google Drive
 
 ### Linux server or local machine
