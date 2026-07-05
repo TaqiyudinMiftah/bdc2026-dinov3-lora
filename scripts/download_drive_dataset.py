@@ -1,18 +1,40 @@
 import argparse
+import os
 from pathlib import Path
 
 import gdown
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", type=str, required=True, help="Google Drive folder URL")
-    parser.add_argument("--output", type=Path, default=Path("/content/BDC2026"))
+    parser.add_argument(
+        "--url",
+        type=str,
+        default=os.environ.get("BDC2026_DRIVE_URL"),
+        help="Google Drive folder URL. Can also be set with BDC2026_DRIVE_URL in .env.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path(os.environ.get("BDC2026_DATA_ROOT", "./BDC2026")),
+        help="Dataset output directory. Use ./BDC2026 on local/Linux servers, /content/BDC2026 on Colab.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if not args.url:
+        raise ValueError(
+            "Missing Drive folder URL. Pass --url or set BDC2026_DRIVE_URL in your .env file."
+        )
+
+    args.output = args.output.expanduser().resolve()
     args.output.mkdir(parents=True, exist_ok=True)
 
     print("Downloading from:", args.url)
@@ -47,6 +69,8 @@ def main():
     print("TRAIN_DIR:", train_dir)
     print("TEST_DIR:", test_dir)
     print("TEMPLATE_PATH:", template_path)
+    print("\nUse this path for training:")
+    print(f"python train.py --data-root {data_root} ...")
 
 
 if __name__ == "__main__":
