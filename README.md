@@ -82,16 +82,30 @@ If you are using Colab, you can also use:
 pip install -r requirements.txt
 ```
 
-DINOv3 may require accepting the model terms on Hugging Face and logging in:
+## Environment variables and tokens
+
+A safe template is provided in `.env.example`. Copy it to `.env` and fill in your real tokens locally:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```bash
+HF_TOKEN=your_huggingface_token_here
+BDC2026_DRIVE_URL=https://drive.google.com/drive/folders/1mVsWMnr2nmRotVjndbej9ONQmM6y5-q9
+BDC2026_DATA_ROOT=/content/BDC2026
+BDC2026_OUTPUT_DIR=./outputs_dinov3_lora
+BDC2026_EDA_OUTPUT_DIR=./eda_outputs
+```
+
+The real `.env` file is ignored by Git and should not be committed. The training code automatically loads `.env` with `python-dotenv`, so `HF_TOKEN` can be used for gated Hugging Face models such as DINOv3.
+
+DINOv3 may require accepting the model terms on Hugging Face and logging in. You can either use `.env` with `HF_TOKEN`, or run:
 
 ```bash
 huggingface-cli login
-```
-
-or set:
-
-```bash
-export HF_TOKEN=your_token_here
 ```
 
 ## Download dataset from Google Drive in Colab
