@@ -112,7 +112,7 @@ huggingface-cli login
 
 ```bash
 python scripts/download_drive_dataset.py \
-  --url "https://drive.google.com/drive/folders/1mVsWMnr2nmRotVjndbej9ONQmM6y5-q9" \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
   --output /content/BDC2026
 ```
 
