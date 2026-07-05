@@ -60,10 +60,33 @@ uv venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-Install dependencies inside the uv environment:
+### Install dependencies on the Debian L40 server
+
+This server reports NVIDIA driver 535 and CUDA 12.2 in `nvidia-smi`. Do **not** let pip install the newest default PyTorch wheel, because it may pull a CUDA 12.6/12.8 build that needs a newer driver.
+
+Use the repo installer:
 
 ```bash
+git pull
+chmod +x scripts/install_torch_cuda122.sh
+./scripts/install_torch_cuda122.sh
+```
+
+Or install manually:
+
+```bash
+uv pip uninstall -y torch torchvision torchaudio
+uv pip install -r requirements-torch-cu121.txt
 uv pip install -r requirements.txt
+```
+
+The PyTorch CUDA requirement file pins:
+
+```text
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
+CUDA wheel index: https://download.pytorch.org/whl/cu121
 ```
 
 Check that PyTorch can see your GPU:
@@ -71,14 +94,34 @@ Check that PyTorch can see your GPU:
 ```bash
 python - <<'PY'
 import torch
+print('torch version:', torch.__version__)
+print('torch CUDA build:', torch.version.cuda)
 print('CUDA available:', torch.cuda.is_available())
+print('Device count:', torch.cuda.device_count())
 print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')
 PY
 ```
 
-If you are using Colab, you can also use:
+Expected on the L40 server:
+
+```text
+torch CUDA build: 12.1
+CUDA available: True
+Device: NVIDIA L40
+```
+
+More details are in:
+
+```text
+docs/cuda_setup.md
+```
+
+### Colab setup
+
+If you are using Colab, you can use:
 
 ```bash
+pip install -r requirements-torch-cu121.txt
 pip install -r requirements.txt
 ```
 
@@ -234,10 +277,10 @@ Important: the clean-copy mode only auto-removes corrupt files and safe exact du
 
 Default training now uses a larger epoch budget and higher early-stopping patience.
 
-For Linux server/local path:
+GPU 2 may already be busy on the shared server. Use an idle GPU, for example GPU 0:
 
 ```bash
-python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
   --data-root ./BDC2026 \
   --output-dir ./outputs_dinov3_lora \
   --image-size 224 \
@@ -258,7 +301,7 @@ python train.py \
 For a stronger GPU run, try:
 
 ```bash
-python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
   --data-root ./BDC2026 \
   --output-dir ./outputs_dinov3_lora_384 \
   --image-size 384 \
@@ -330,7 +373,7 @@ outputs_dinov3_lora/fold1_best.pt
 ## Predict final submission
 
 ```bash
-python predict.py \
+CUDA_VISIBLE_DEVICES=0 python predict.py \
   --data-root ./BDC2026 \
   --checkpoint-dir ./outputs_dinov3_lora \
   --output ./submission_NamaTim.csv \
