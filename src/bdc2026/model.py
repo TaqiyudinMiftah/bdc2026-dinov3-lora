@@ -55,7 +55,13 @@ class Dinov3LoraClassifier(nn.Module):
         return self.classifier(self.dropout(features))
 
 
+def unwrap_model(model):
+    """Return the underlying model when wrapped by DataParallel."""
+    return model.module if isinstance(model, nn.DataParallel) else model
+
+
 def count_trainable_params(model):
+    model = unwrap_model(model)
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total params: {total:,}")
@@ -84,6 +90,13 @@ def get_optimizer(model, cfg):
 
 
 def get_trainable_state_dict(model):
+    """
+    Save only trainable parameters, unwrapped from DataParallel.
+
+    This keeps checkpoints small and loadable by both single-GPU and multi-GPU
+    runs because saved keys do not include the DataParallel `module.` prefix.
+    """
+    model = unwrap_model(model)
     trainable_names = {name for name, param in model.named_parameters() if param.requires_grad}
     full_state = model.state_dict()
     return {k: v.detach().cpu() for k, v in full_state.items() if k in trainable_names}
