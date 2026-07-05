@@ -94,7 +94,7 @@ Then edit `.env`:
 
 ```bash
 HF_TOKEN=your_huggingface_token_here
-BDC2026_DRIVE_URL=https://drive.google.com/drive/folders/1mVsWMnr2nmRotVjndbej9ONQmM6y5-q9
+BDC2026_DRIVE_URL=https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7
 BDC2026_DATA_ROOT=/content/BDC2026
 BDC2026_OUTPUT_DIR=./outputs_dinov3_lora
 BDC2026_EDA_OUTPUT_DIR=./eda_outputs
