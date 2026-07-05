@@ -53,6 +53,10 @@ class TrainConfig:
     dropout: float = 0.1
     gradient_checkpointing: bool = False
 
+    # Multi-GPU uses torch.nn.DataParallel over the visible CUDA devices.
+    # Use scripts/launch_train_auto_gpus.py to automatically choose free GPUs.
+    multi_gpu: bool = False
+
     use_amp: bool = True
     use_class_weights: bool = True
     class_weight_mode: str = "inverse"  # inverse, sqrt_inverse, effective
