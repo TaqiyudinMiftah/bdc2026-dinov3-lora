@@ -1,5 +1,8 @@
-torch
-torchvision
+# Non-PyTorch dependencies.
+# Install PyTorch separately with the CUDA wheel that matches your driver.
+# For this repo's Debian L40 server with NVIDIA driver 535 / CUDA 12.2, use:
+#   uv pip install -r requirements-torch-cu121.txt
+
 transformers>=4.56.0
 peft
 accelerate
