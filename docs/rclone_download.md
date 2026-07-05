@@ -52,7 +52,7 @@ rclone version
 
 ## 2. Configure a Google Drive remote
 
-Run:
+Run this on the server:
 
 ```bash
 rclone config
@@ -70,14 +70,55 @@ scope: drive.readonly
 root_folder_id: leave blank
 service_account_file: leave blank
 Edit advanced config: n
+```
+
+### If the server has a browser
+
+Choose:
+
+```text
 Use auto config: y
 ```
 
 A browser login will open. Login with the Google account that can access the BDC2026 Drive folder.
 
-If your server cannot open a browser, choose `Use auto config: n`. rclone will give you a link. Open the link on your local laptop/browser, log in, then paste the verification token back into the server terminal.
+### If the server does not have a browser
 
-Verify:
+Choose:
+
+```text
+Use auto config: n
+```
+
+The server will ask for `config_token` and show a command like this:
+
+```bash
+rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0"
+```
+
+The `config_token` is the JSON output produced by running that command on another machine that has both `rclone` and a browser, for example your laptop.
+
+On your laptop, install rclone and run the exact command shown by the server:
+
+```bash
+rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0"
+```
+
+Your browser will open. Login with the Google account that can access the BDC2026 Drive folder. After login, the laptop terminal will print a JSON block similar to this:
+
+```json
+{"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
+```
+
+Copy the entire JSON block and paste it into the server prompt:
+
+```text
+config_token> {"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
+```
+
+Do not paste your Hugging Face token, GitHub token, or Google password into `config_token`.
+
+Verify the remote:
 
 ```bash
 rclone lsd gdrive:
