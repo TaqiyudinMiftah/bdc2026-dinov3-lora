@@ -48,7 +48,31 @@ Do not train until the checker prints:
 Dataset integrity status: OK
 ```
 
-## Local Linux download command
+## Best fallback: download one ZIP file
+
+If `gdown` folder download fails on individual files, create or ask for a single file:
+
+```text
+BDC2026.zip
+```
+
+Upload that ZIP to Google Drive and share it as viewer-accessible by link. Then run:
+
+```bash
+python scripts/download_drive_zip.py \
+  --url "https://drive.google.com/file/d/<ZIP_FILE_ID>/view?usp=sharing" \
+  --zip-path ./BDC2026.zip \
+  --output ./BDC2026 \
+  --force
+```
+
+More details:
+
+```bash
+cat docs/zip_download.md
+```
+
+## Local Linux folder download command
 
 On a local Linux server, do not use `/content/BDC2026`. That path is for Google Colab only.
 
@@ -73,7 +97,7 @@ Then run:
 python scripts/download_drive_dataset.py
 ```
 
-## If gdown stops before finishing
+## If gdown folder download stops before finishing
 
 The download may stop if Google Drive blocks one file, the folder permissions are not fully public, or Google temporarily rate-limits anonymous downloads.
 
@@ -97,7 +121,7 @@ Then verify:
 python scripts/check_dataset_integrity.py --data-root ./BDC2026 --write-report
 ```
 
-If files are still missing, use authenticated Google Drive download with rclone:
+If files are still missing and you cannot get a ZIP file, use authenticated Google Drive download with rclone:
 
 ```bash
 cat docs/rclone_download.md
