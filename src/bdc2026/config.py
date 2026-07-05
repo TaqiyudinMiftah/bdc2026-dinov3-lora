@@ -3,11 +3,17 @@ from pathlib import Path
 from typing import List
 import os
 
+from dotenv import load_dotenv
+
+# Load local .env automatically when present.
+# This keeps secrets out of Git while allowing HF_TOKEN and other config values locally.
+load_dotenv()
+
 
 @dataclass
 class TrainConfig:
     data_root: Path
-    output_dir: Path = Path("./outputs_dinov3_lora")
+    output_dir: Path = Path(os.environ.get("BDC2026_OUTPUT_DIR", "./outputs_dinov3_lora"))
     model_name: str = "facebook/dinov3-vitl16-pretrain-lvd1689m"
     hf_token: str | None = os.environ.get("HF_TOKEN")
 
