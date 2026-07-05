@@ -95,12 +95,12 @@ Then edit `.env`:
 ```bash
 HF_TOKEN=your_huggingface_token_here
 BDC2026_DRIVE_URL=https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7
-BDC2026_DATA_ROOT=/content/BDC2026
+BDC2026_DATA_ROOT=./BDC2026
 BDC2026_OUTPUT_DIR=./outputs_dinov3_lora
 BDC2026_EDA_OUTPUT_DIR=./eda_outputs
 ```
 
-The real `.env` file is ignored by Git and should not be committed. The training code automatically loads `.env` with `python-dotenv`, so `HF_TOKEN` can be used for gated Hugging Face models such as DINOv3.
+Use `./BDC2026` on Linux servers and local machines. Use `/content/BDC2026` only on Google Colab. The real `.env` file is ignored by Git and should not be committed. The training code automatically loads `.env` with `python-dotenv`, so `HF_TOKEN` can be used for gated Hugging Face models such as DINOv3.
 
 DINOv3 may require accepting the model terms on Hugging Face and logging in. You can either use `.env` with `HF_TOKEN`, or use the current Hugging Face CLI:
 
@@ -114,7 +114,27 @@ Check login status with:
 hf auth whoami
 ```
 
-## Download dataset from Google Drive in Colab
+## Download dataset from Google Drive
+
+### Linux server or local machine
+
+Use a path you can write to, such as `./BDC2026`:
+
+```bash
+python scripts/download_drive_dataset.py \
+  --url "https://drive.google.com/drive/folders/1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7" \
+  --output ./BDC2026
+```
+
+Or use the values from `.env`:
+
+```bash
+python scripts/download_drive_dataset.py
+```
+
+### Google Colab
+
+Use `/content/BDC2026` only in Colab:
 
 ```bash
 python scripts/download_drive_dataset.py \
@@ -124,7 +144,17 @@ python scripts/download_drive_dataset.py \
 
 ## EDA, visualization, and data cleaning
 
-Run the EDA pipeline first before training:
+Run the EDA pipeline first before training.
+
+For Linux server/local path:
+
+```bash
+python scripts/eda_cleaning.py \
+  --data-root ./BDC2026 \
+  --output-dir ./eda_outputs
+```
+
+For Colab path:
 
 ```bash
 python scripts/eda_cleaning.py \
@@ -157,7 +187,7 @@ For stronger near-duplicate detection with DINO embeddings:
 
 ```bash
 python scripts/eda_cleaning.py \
-  --data-root /content/BDC2026 \
+  --data-root ./BDC2026 \
   --output-dir ./eda_outputs_dino \
   --use-dino-duplicates \
   --embedding-batch-size 16 \
@@ -185,28 +215,30 @@ To create a cleaned copy without modifying the original dataset:
 
 ```bash
 python scripts/eda_cleaning.py \
-  --data-root /content/BDC2026 \
+  --data-root ./BDC2026 \
   --output-dir ./eda_outputs \
   --make-clean-copy \
-  --clean-output /content/BDC2026_clean \
+  --clean-output ./BDC2026_clean \
   --copy-mode copy
 ```
 
 Then train using:
 
 ```bash
---data-root /content/BDC2026_clean
+--data-root ./BDC2026_clean
 ```
 
 Important: the clean-copy mode only auto-removes corrupt files and safe exact duplicates. Cross-label and semantic duplicates are reported for manual review.
 
 ## Train 5-fold CV
 
-Default training now uses a larger epoch budget and higher early-stopping patience:
+Default training now uses a larger epoch budget and higher early-stopping patience.
+
+For Linux server/local path:
 
 ```bash
 python train.py \
-  --data-root /content/BDC2026 \
+  --data-root ./BDC2026 \
   --output-dir ./outputs_dinov3_lora \
   --image-size 224 \
   --epochs 20 \
@@ -227,7 +259,7 @@ For a stronger GPU run, try:
 
 ```bash
 python train.py \
-  --data-root /content/BDC2026 \
+  --data-root ./BDC2026 \
   --output-dir ./outputs_dinov3_lora_384 \
   --image-size 384 \
   --epochs 25 \
@@ -299,7 +331,7 @@ outputs_dinov3_lora/fold1_best.pt
 
 ```bash
 python predict.py \
-  --data-root /content/BDC2026 \
+  --data-root ./BDC2026 \
   --checkpoint-dir ./outputs_dinov3_lora \
   --output ./submission_NamaTim.csv \
   --tta
