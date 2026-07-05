@@ -2,6 +2,7 @@ import argparse
 import gc
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,13 @@ from transformers import get_cosine_schedule_with_warmup
 
 from bdc2026.config import TrainConfig
 from bdc2026.dataset import WasteDataset, build_train_df, get_transforms
-from bdc2026.model import Dinov3LoraClassifier, count_trainable_params, get_optimizer, get_trainable_state_dict
+from bdc2026.model import (
+    Dinov3LoraClassifier,
+    count_trainable_params,
+    get_optimizer,
+    get_trainable_state_dict,
+    unwrap_model,
+)
 from bdc2026.utils import (
     seed_everything,
     get_device,
@@ -64,6 +71,7 @@ def parse_args():
     parser.add_argument("--use-weighted-sampler", action="store_true")
     parser.add_argument("--sampler-weight-mode", type=str, default="sqrt_inverse")
     parser.add_argument("--gradient-checkpointing", action="store_true")
+    parser.add_argument("--multi-gpu", action="store_true", help="Use torch.nn.DataParallel over all visible CUDA devices.")
     parser.add_argument("--no-amp", action="store_true")
     return parser.parse_args()
 
@@ -100,6 +108,7 @@ def cfg_from_args(args):
     cfg.use_weighted_sampler = args.use_weighted_sampler
     cfg.sampler_weight_mode = args.sampler_weight_mode
     cfg.gradient_checkpointing = args.gradient_checkpointing
+    cfg.multi_gpu = args.multi_gpu
     cfg.use_amp = not args.no_amp
     return cfg
 
@@ -120,6 +129,28 @@ def get_current_lrs(optimizer):
 
 def format_lrs(lrs):
     return ", ".join(f"{lr:.2e}" for lr in lrs)
+
+
+def maybe_wrap_multi_gpu(model, cfg, device):
+    if device.type != "cuda":
+        if cfg.multi_gpu:
+            print("--multi-gpu was requested, but CUDA is not available. Training on CPU.")
+        return model
+
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "all")
+    num_visible = torch.cuda.device_count()
+    print(f"Visible CUDA devices: {visible}")
+    print(f"torch.cuda.device_count(): {num_visible}")
+
+    if cfg.multi_gpu and num_visible > 1:
+        print(f"Using DataParallel across {num_visible} visible GPU(s).")
+        print("Note: --batch-size and --valid-batch-size are total batch sizes split across visible GPUs.")
+        return nn.DataParallel(model)
+
+    if cfg.multi_gpu and num_visible <= 1:
+        print("--multi-gpu was requested, but only one CUDA device is visible. Training on single GPU.")
+
+    return model
 
 
 def build_scheduler(optimizer, train_loader, cfg):
@@ -252,6 +283,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
     )
 
     model = Dinov3LoraClassifier(cfg).to(device)
+    model = maybe_wrap_multi_gpu(model, cfg, device)
     if fold == 0:
         count_trainable_params(model)
 
@@ -317,6 +349,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
                 "lora_target_modules": cfg.lora_target_modules,
                 "image_size": cfg.image_size,
                 "scheduler": cfg.scheduler,
+                "multi_gpu": cfg.multi_gpu,
                 "early_stopping_patience": cfg.early_stopping_patience,
                 "early_stopping_min_delta": cfg.early_stopping_min_delta,
             }, ckpt_path)
@@ -352,7 +385,7 @@ def run_fold(fold, train_df, train_tfms, valid_tfms, cfg, device):
 
     pd.DataFrame(history).to_csv(cfg.output_dir / f"fold{fold}_history.csv", index=False)
     checkpoint = torch.load(ckpt_path, map_location="cpu")
-    model.load_state_dict(checkpoint["model"], strict=False)
+    unwrap_model(model).load_state_dict(checkpoint["model"], strict=False)
     valid_loss, valid_f1, per_class_f1, val_probs, val_labels = valid_one_epoch(model, valid_loader, criterion, cfg, device)
     val_indices = val_df["original_index"].values
 
