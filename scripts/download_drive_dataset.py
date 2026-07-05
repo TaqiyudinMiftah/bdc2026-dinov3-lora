@@ -32,9 +32,9 @@ def parse_args():
         help="Use browser cookies if available. Useful for private Drive files on local machines.",
     )
     parser.add_argument(
-        "--remaining-ok",
+        "--strict",
         action="store_true",
-        help="Ask gdown to keep going when supported by the installed gdown version.",
+        help="Stop immediately on the first file download error. By default, gdown keeps going when supported.",
     )
     parser.add_argument(
         "--no-check",
@@ -55,10 +55,19 @@ def call_gdown_download_folder(args):
     if "use_cookies" in signature.parameters:
         kwargs["use_cookies"] = args.use_cookies
     if "remaining_ok" in signature.parameters:
-        kwargs["remaining_ok"] = args.remaining_ok
+        # False means: keep downloading remaining files even if one file fails.
+        # This helps large Drive folders where one file temporarily blocks gdown.
+        kwargs["remaining_ok"] = not args.strict
 
     print("gdown.download_folder kwargs:", {k: v for k, v in kwargs.items() if k != "url"})
     return gdown.download_folder(**kwargs)
+
+
+def find_data_root(output: Path) -> Path:
+    candidates = list(output.rglob("submission.csv"))
+    if len(candidates) == 0:
+        return output
+    return candidates[0].parent
 
 
 def run_integrity_check(data_root: Path):
@@ -94,6 +103,7 @@ def main():
     print("Output folder:", args.output)
     print("Tip: if download fails because a file is not public, set the folder and files to 'Anyone with the link: Viewer'.")
     print("Tip: if it fails after many files, rerun the same command; existing files are usually reused/skipped by gdown.")
+    print("Tip: if gdown still fails, use docs/rclone_download.md for authenticated Drive download.")
 
     try:
         call_gdown_download_folder(args)
@@ -101,24 +111,21 @@ def main():
         print("\nDownload failed before all files were retrieved.")
         print("Reason:", repr(e))
         print("\nWhat to try next:")
-        print("1. Make sure the Drive folder and contained files are shared as 'Anyone with the link: Viewer'.")
-        print("2. Rerun the exact same command. Partial downloads can often continue.")
-        print("3. Try adding --use-cookies if you can access the Drive folder in your browser on this machine.")
-        print("4. Run: python scripts/check_dataset_integrity.py --data-root", args.output)
+        print("1. Pull latest repo changes: git pull")
+        print("2. Rerun the same command. The downloader now keeps going when your gdown version supports it.")
+        print("3. Run: python scripts/check_dataset_integrity.py --data-root", args.output, "--write-report")
+        print("4. If files are still missing, use authenticated rclone download: docs/rclone_download.md")
         raise
 
-    candidates = list(args.output.rglob("submission.csv"))
-    if len(candidates) == 0:
-        raise FileNotFoundError(
-            "submission.csv not found. The Drive folder may be private or the structure changed. "
-            "If using Colab, try mounting Google Drive and adding the shared folder as a shortcut."
-        )
-
-    template_path = candidates[0]
-    data_root = template_path.parent
+    data_root = find_data_root(args.output)
+    template_path = data_root / "submission.csv"
     train_dir = data_root / "train"
     test_dir = data_root / "test"
 
+    if not template_path.exists():
+        raise FileNotFoundError(
+            "submission.csv not found. The Drive folder may be private or the structure changed."
+        )
     if not train_dir.exists():
         raise FileNotFoundError(f"Missing train folder: {train_dir}")
     if not test_dir.exists():
