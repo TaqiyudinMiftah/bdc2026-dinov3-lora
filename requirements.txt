@@ -12,3 +12,4 @@ gdown
 huggingface_hub
 matplotlib
 ImageHash
+python-dotenv
