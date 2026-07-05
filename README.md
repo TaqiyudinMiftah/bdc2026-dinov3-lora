@@ -102,10 +102,16 @@ BDC2026_EDA_OUTPUT_DIR=./eda_outputs
 
 The real `.env` file is ignored by Git and should not be committed. The training code automatically loads `.env` with `python-dotenv`, so `HF_TOKEN` can be used for gated Hugging Face models such as DINOv3.
 
-DINOv3 may require accepting the model terms on Hugging Face and logging in. You can either use `.env` with `HF_TOKEN`, or run:
+DINOv3 may require accepting the model terms on Hugging Face and logging in. You can either use `.env` with `HF_TOKEN`, or use the current Hugging Face CLI:
 
 ```bash
-huggingface-cli login
+hf auth login
+```
+
+Check login status with:
+
+```bash
+hf auth whoami
 ```
 
 ## Download dataset from Google Drive in Colab
