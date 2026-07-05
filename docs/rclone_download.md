@@ -6,13 +6,43 @@ Use this when `gdown` fails on one or more files even though you can open the Dr
 
 ## 1. Install rclone
 
+### Option A: no sudo access
+
+Use the local installer included in this repo:
+
+```bash
+git pull
+chmod +x scripts/install_rclone_user.sh
+./scripts/install_rclone_user.sh
+export PATH="$HOME/bin:$PATH"
+rclone version
+```
+
+This installs the `rclone` binary to:
+
+```text
+~/bin/rclone
+```
+
+If `rclone` works only in the current terminal, reload your shell profile:
+
+```bash
+source ~/.bashrc
+```
+
+or manually run:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+```
+
+### Option B: sudo access
+
 If you have sudo access:
 
 ```bash
 curl https://rclone.org/install.sh | sudo bash
 ```
-
-If you do not have sudo access, download a Linux binary from the rclone downloads page and add it to your PATH.
 
 Check:
 
@@ -44,6 +74,8 @@ Use auto config: y
 ```
 
 A browser login will open. Login with the Google account that can access the BDC2026 Drive folder.
+
+If your server cannot open a browser, choose `Use auto config: n`. rclone will give you a link. Open the link on your local laptop/browser, log in, then paste the verification token back into the server terminal.
 
 Verify:
 
