@@ -75,9 +75,15 @@ python scripts/download_drive_dataset.py
 
 ## If gdown stops before finishing
 
-The download may stop if Google Drive blocks one file or the folder permissions are not fully public.
+The download may stop if Google Drive blocks one file, the folder permissions are not fully public, or Google temporarily rate-limits anonymous downloads.
 
-Try:
+First pull the latest downloader:
+
+```bash
+git pull
+```
+
+Then rerun:
 
 ```bash
 python scripts/download_drive_dataset.py \
@@ -85,10 +91,26 @@ python scripts/download_drive_dataset.py \
   --output ./BDC2026
 ```
 
-Then verify again:
+Then verify:
 
 ```bash
 python scripts/check_dataset_integrity.py --data-root ./BDC2026 --write-report
 ```
 
-If it still fails, open Google Drive and make sure the folder and files are shared as viewer-accessible by link.
+If files are still missing, use authenticated Google Drive download with rclone:
+
+```bash
+cat docs/rclone_download.md
+```
+
+Quick rclone command after configuring the `gdrive` remote:
+
+```bash
+chmod +x scripts/download_with_rclone.sh
+BDC2026_DRIVE_FOLDER_ID=1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7 \
+BDC2026_DATA_ROOT=./BDC2026 \
+REMOTE_NAME=gdrive \
+./scripts/download_with_rclone.sh
+```
+
+If even rclone cannot access the file, open Google Drive and make sure the folder and files are accessible to the Google account used by rclone.
