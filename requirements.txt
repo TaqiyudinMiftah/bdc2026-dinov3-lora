@@ -16,3 +16,6 @@ huggingface_hub
 matplotlib
 ImageHash
 python-dotenv
+tabulate
+jupyterlab
+ipykernel
