@@ -9,9 +9,12 @@ env/
 
 # Dataset and outputs
 BDC2026/
+BDC2026_clean*/
 dataset/
 data/
 outputs*/
+leaderboard_pipeline_outputs/
+experiments/
 checkpoints/
 *.pt
 *.pth
