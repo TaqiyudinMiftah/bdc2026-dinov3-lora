@@ -10,7 +10,7 @@ This pipeline is designed around the current competition situation:
 
 The pipeline therefore uses a strict rule: do not spend another submission until a candidate passes OOF, per-class, and fold-stability checks.
 
-## Implemented phase
+## Implemented notebooks
 
 Run these notebooks in order:
 
@@ -19,21 +19,23 @@ Run these notebooks in order:
 01_baseline_oof_diagnostics.ipynb
 02_manual_label_review_queue.ipynb
 03_duplicate_groups_and_leakage.ipynb
+04_build_reviewed_clean_dataset.ipynb
+05_duplicate_aware_folds.ipynb
+06_experiment_matrix.ipynb
 ```
 
-### Notebook 00
+### Notebook 00 — Project contract and submission budget
 
 Verifies:
 
 - 26,527 training images
 - 1,458 test images
 - completed `outputs_dinov3_lora_384`
-- 5 fold histories
-- 5 fold checkpoints
+- five fold histories and checkpoints
 - OOF predictions and probabilities
 - Python, PyTorch, CUDA, package, and Git versions
 
-It creates:
+Creates:
 
 ```text
 leaderboard_pipeline_outputs/00_config/
@@ -43,9 +45,9 @@ leaderboard_pipeline_outputs/00_config/
 └── submission_gate.json
 ```
 
-### Notebook 01
+### Notebook 01 — Baseline OOF diagnostics
 
-Creates the official OOF baseline:
+Creates the official baseline analysis:
 
 - Macro-F1
 - per-class precision, recall, and F1
@@ -62,9 +64,9 @@ Outputs:
 leaderboard_pipeline_outputs/01_baseline/
 ```
 
-### Notebook 02
+### Notebook 02 — Ranked manual label review
 
-Creates a ranked manual-review queue. It does not automatically relabel anything.
+Creates a prioritized review queue. It does not automatically relabel anything.
 
 Priority tiers:
 
@@ -78,7 +80,7 @@ F: low-margin intrinsic ambiguity
 G: general model error
 ```
 
-Review actions:
+Allowed review actions:
 
 ```text
 keep
@@ -87,15 +89,21 @@ exclude
 needs_second_review
 ```
 
-The first file to review is:
+Start with:
 
 ```text
 leaderboard_pipeline_outputs/02_label_review/priority_review_first_300.csv
 ```
 
+The full editable audit file is:
+
+```text
+leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv
+```
+
 Do not relabel only because the model is confident. Use the image, competition taxonomy, duplicate evidence, and a written review reason.
 
-### Notebook 03
+### Notebook 03 — Duplicate groups and fold leakage
 
 Combines:
 
@@ -105,12 +113,12 @@ Combines:
 - manually confirmed DINO duplicate decisions
 - original fold assignments
 
-It produces two types of groups:
+It produces:
 
 - **strict groups**: exact duplicates and manually confirmed DINO duplicates
 - **candidate groups**: pHash and unreviewed DINO similarity evidence
 
-Only strict groups should be used automatically for duplicate-aware cross-validation.
+Only strict groups are automatically used for duplicate-aware cross-validation.
 
 Outputs:
 
@@ -122,6 +130,82 @@ leaderboard_pipeline_outputs/03_duplicates/
 ├── candidate_group_leakage.csv
 └── duplicate_leakage_summary.json
 ```
+
+### Notebook 04 — Build reviewed clean dataset
+
+Combines manual decisions with conservative automatic cleaning.
+
+Automatic exclusions are limited to:
+
+```text
+corrupt or unreadable files
+redundant same-label exact MD5 duplicates
+```
+
+The notebook creates an audit first and starts with:
+
+```python
+APPLY_CLEAN_COPY = False
+```
+
+Review these files before changing it to `True`:
+
+```text
+leaderboard_pipeline_outputs/04_clean_dataset/
+├── cleaning_audit.csv
+├── excluded_images.csv
+├── relabeled_images.csv
+├── pending_second_review.csv
+└── clean_manifest.csv
+```
+
+The clean dataset is created as:
+
+```text
+BDC2026_clean_v1/
+├── train/
+├── test -> original test
+└── submission.csv -> original template
+```
+
+### Notebook 05 — Duplicate-aware folds
+
+Uses `StratifiedGroupKFold` to build five folds while keeping every strict duplicate group in a single fold.
+
+Output:
+
+```text
+leaderboard_pipeline_outputs/05_folds/train_folds_duplicate_aware.csv
+```
+
+Training with these folds uses:
+
+```text
+scripts/train_with_precomputed_folds.py
+```
+
+### Notebook 06 — Controlled experiment matrix
+
+Defines the minimum experiment sequence:
+
+```text
+E00: completed 384 baseline
+E01: clean 384 seed 42 — first S02 candidate
+E02: clean 384 seed 123 — ensemble diversity
+E03: optional weighted-sampler 384 model
+E04: optional 224-resolution diversity model
+```
+
+It generates:
+
+```text
+leaderboard_pipeline_outputs/06_experiments/
+├── experiment_registry.csv
+├── generated_commands.sh
+└── S02_decision_checklist.csv
+```
+
+Run **E01 first**. Do not run optional experiments until E01 OOF analysis is complete.
 
 ## Run in Jupyter
 
@@ -135,27 +219,51 @@ jupyter lab notebooks/leaderboard_pipeline/
 
 Run notebooks in numerical order.
 
-## Execute notebooks from the terminal
+## Execute analysis notebooks from the terminal
 
 ```bash
-jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/leaderboard_pipeline/00_project_config_and_submission_budget.ipynb
+for notebook in \
+  00_project_config_and_submission_budget \
+  01_baseline_oof_diagnostics \
+  02_manual_label_review_queue \
+  03_duplicate_groups_and_leakage; do
+  jupyter nbconvert --to notebook --execute --inplace \
+    "notebooks/leaderboard_pipeline/${notebook}.ipynb"
+done
+```
 
-jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/leaderboard_pipeline/01_baseline_oof_diagnostics.ipynb
+Notebook 04 requires manual editing of the review CSV before creating the clean dataset. Continue with notebooks 05 and 06 after `BDC2026_clean_v1` exists.
 
-jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/leaderboard_pipeline/02_manual_label_review_queue.ipynb
+## Train E01
 
-jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/leaderboard_pipeline/03_duplicate_groups_and_leakage.ipynb
+Notebook 06 writes the exact command, but the main form is:
+
+```bash
+python scripts/launch_train_auto_gpus.py \
+  --max-gpus 3 \
+  --min-gpus 1 \
+  --min-free-mb 30000 \
+  --max-utilization 30 \
+  -- python scripts/train_with_precomputed_folds.py \
+    --data-root ./BDC2026_clean_v1 \
+    --fold-csv ./leaderboard_pipeline_outputs/05_folds/train_folds_duplicate_aware.csv \
+    --output-dir ./experiments/E01_clean_v1_384_seed42 \
+    --image-size 384 \
+    --epochs 25 \
+    --batch-size 2 \
+    --valid-batch-size 4 \
+    --grad-accum 8 \
+    --seed 42 \
+    --use-class-weights \
+    --scheduler plateau \
+    --early-stopping-patience 8
 ```
 
 ## Submission strategy
 
 ### Submission S02
 
-Reserve for the strongest cleaned, duplicate-aware single model. Suggested gate:
+Reserve for the strongest cleaned, duplicate-aware single model. Gate:
 
 ```text
 OOF Macro-F1 gain >= 0.0010
@@ -166,7 +274,7 @@ prediction file and submission schema are reproducible
 
 ### Submission S03
 
-Reserve for the final diverse ensemble. Suggested gate:
+Reserve for the final diverse ensemble. Gate:
 
 ```text
 OOF gain over the best single model >= 0.0005
@@ -176,12 +284,9 @@ model disagreement analysis confirms useful diversity
 submission order and schema are validated
 ```
 
-## Planned next implementation phase
+## Planned final phase
 
 ```text
-04_duplicate_aware_folds.ipynb
-05_build_clean_dataset.ipynb
-06_experiment_matrix.ipynb
 07_model_disagreement_analysis.ipynb
 08_oof_ensemble_optimization.ipynb
 09_class_bias_calibration.ipynb
@@ -189,4 +294,4 @@ submission order and schema are validated
 11_experiment_report.ipynb
 ```
 
-The next phase should begin only after the priority review CSV and strict duplicate groups have been inspected.
+Do not upload S02 until E01 has been compared against the baseline using the same OOF and fold-level checks.
