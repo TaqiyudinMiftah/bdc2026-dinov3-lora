@@ -8,7 +8,7 @@ This pipeline is designed around the current competition situation:
 - submissions already used: **1**
 - submissions remaining: **2**
 
-The pipeline therefore uses a strict rule: do not spend another submission until a candidate passes OOF, per-class, and fold-stability checks.
+Do not spend another submission until a candidate passes OOF, per-class, and fold-stability checks.
 
 ## Implemented notebooks
 
@@ -18,13 +18,14 @@ Run these notebooks in order:
 00_project_config_and_submission_budget.ipynb
 01_baseline_oof_diagnostics.ipynb
 02_manual_label_review_queue.ipynb
+02b_moondream_assisted_label_review.ipynb   # optional assistant, human decision required
 03_duplicate_groups_and_leakage.ipynb
 04_build_reviewed_clean_dataset.ipynb
 05_duplicate_aware_folds.ipynb
 06_experiment_matrix.ipynb
 ```
 
-### Notebook 00 — Project contract and submission budget
+## 00 — Project contract and submission budget
 
 Verifies:
 
@@ -45,7 +46,7 @@ leaderboard_pipeline_outputs/00_config/
 └── submission_gate.json
 ```
 
-### Notebook 01 — Baseline OOF diagnostics
+## 01 — Baseline OOF diagnostics
 
 Creates the official baseline analysis:
 
@@ -64,7 +65,7 @@ Outputs:
 leaderboard_pipeline_outputs/01_baseline/
 ```
 
-### Notebook 02 — Ranked manual label review
+## 02 — Ranked manual label review
 
 Creates a prioritized review queue. It does not automatically relabel anything.
 
@@ -80,7 +81,7 @@ F: low-margin intrinsic ambiguity
 G: general model error
 ```
 
-Allowed review actions:
+Allowed human actions:
 
 ```text
 keep
@@ -101,9 +102,103 @@ The full editable audit file is:
 leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv
 ```
 
-Do not relabel only because the model is confident. Use the image, competition taxonomy, duplicate evidence, and a written review reason.
+## 02b — Moondream-assisted review
 
-### Notebook 03 — Duplicate groups and fold leakage
+This optional stage uses Moondream as a **review assistant**, not an automatic labeler.
+
+Safeguards:
+
+- only paths inside `BDC2026/train` are accepted;
+- no test images are processed;
+- the first prompt requests neutral visual facts without showing the original label or OOF prediction;
+- the second prompt uses the editable competition rubric;
+- packaging-versus-contents and mixed-object cases are sent to second review;
+- Moondream recommendations are never merged automatically;
+- a human reviewer, written reason, and explicit action are required.
+
+Install the optional runtime:
+
+```bash
+uv pip install -r requirements-moondream.txt
+```
+
+Review the editable rubric before inference:
+
+```text
+configs/moondream_labeling_rubric.json
+```
+
+Dry run without loading the model:
+
+```bash
+python scripts/moondream_label_review.py \
+  --data-root ./BDC2026 \
+  --candidates ./leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv \
+  --tiers A,B,C,D \
+  --limit 300 \
+  --dry-run
+```
+
+Five-image smoke test on a free GPU:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 python scripts/moondream_label_review.py \
+  --data-root ./BDC2026 \
+  --candidates ./leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv \
+  --output-dir ./leaderboard_pipeline_outputs/02b_moondream_review/smoke_test \
+  --model moondream3.1-9B-A2B \
+  --tiers A,B,C,D \
+  --limit 5 \
+  --checkpoint-every 1
+```
+
+Process the first 300 strong candidates:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 python scripts/moondream_label_review.py \
+  --data-root ./BDC2026 \
+  --candidates ./leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv \
+  --output-dir ./leaderboard_pipeline_outputs/02b_moondream_review \
+  --model moondream3.1-9B-A2B \
+  --tiers A,B,C,D \
+  --limit 300 \
+  --checkpoint-every 5
+```
+
+Outputs:
+
+```text
+leaderboard_pipeline_outputs/02b_moondream_review/
+├── selected_candidates.csv
+├── rubric_snapshot.json
+├── moondream_raw_responses.jsonl
+├── moondream_review_evidence.csv
+├── moondream_human_review_queue.csv
+└── moondream_review_summary.json
+```
+
+Complete these columns in `moondream_human_review_queue.csv`:
+
+```text
+human_action
+human_new_label
+human_reason
+human_reviewer
+human_second_review_required
+```
+
+Then merge only the completed human decisions:
+
+```bash
+python scripts/merge_moondream_human_decisions.py \
+  --base-queue ./leaderboard_pipeline_outputs/02_label_review/ranked_review_queue.csv \
+  --moondream-queue ./leaderboard_pipeline_outputs/02b_moondream_review/moondream_human_review_queue.csv \
+  --output ./leaderboard_pipeline_outputs/02_label_review/ranked_review_queue_with_moondream_human_decisions.csv
+```
+
+Before notebook 04, use the merged review queue as the reviewed decision source. Do not use Moondream output if the competition rules prohibit external VLM-assisted annotation.
+
+## 03 — Duplicate groups and fold leakage
 
 Combines:
 
@@ -131,9 +226,9 @@ leaderboard_pipeline_outputs/03_duplicates/
 └── duplicate_leakage_summary.json
 ```
 
-### Notebook 04 — Build reviewed clean dataset
+## 04 — Build reviewed clean dataset
 
-Combines manual decisions with conservative automatic cleaning.
+Combines human decisions with conservative automatic cleaning.
 
 Automatic exclusions are limited to:
 
@@ -168,7 +263,7 @@ BDC2026_clean_v1/
 └── submission.csv -> original template
 ```
 
-### Notebook 05 — Duplicate-aware folds
+## 05 — Duplicate-aware folds
 
 Uses `StratifiedGroupKFold` to build five folds while keeping every strict duplicate group in a single fold.
 
@@ -184,7 +279,7 @@ Training with these folds uses:
 scripts/train_with_precomputed_folds.py
 ```
 
-### Notebook 06 — Controlled experiment matrix
+## 06 — Controlled experiment matrix
 
 Defines the minimum experiment sequence:
 
@@ -209,17 +304,13 @@ Run **E01 first**. Do not run optional experiments until E01 OOF analysis is com
 
 ## Run in Jupyter
 
-From the repository root:
-
 ```bash
 git pull
 source .venv/bin/activate
 jupyter lab notebooks/leaderboard_pipeline/
 ```
 
-Run notebooks in numerical order.
-
-## Execute analysis notebooks from the terminal
+Execute the fully automatic analysis notebooks:
 
 ```bash
 for notebook in \
@@ -232,11 +323,9 @@ for notebook in \
 done
 ```
 
-Notebook 04 requires manual editing of the review CSV before creating the clean dataset. Continue with notebooks 05 and 06 after `BDC2026_clean_v1` exists.
+Notebook 02b deliberately leaves model execution disabled until the rubric, GPU selection, and candidate count have been reviewed. Notebook 04 requires human decisions before creating the clean dataset.
 
 ## Train E01
-
-Notebook 06 writes the exact command, but the main form is:
 
 ```bash
 python scripts/launch_train_auto_gpus.py \
