@@ -16,6 +16,11 @@ import pandas as pd
 
 ALLOWED_ACTIONS = {"keep", "relabel", "exclude", "needs_second_review"}
 ALLOWED_LABELS = {0, 1, 2}
+LABEL_TO_CLASS = {
+    0: "0_Recyclable",
+    1: "1_Electronic",
+    2: "2_Organic",
+}
 
 
 def parse_args():
@@ -46,15 +51,19 @@ def parse_args():
     return parser.parse_args()
 
 
-def normalized_key(value) -> str:
-    return str(Path(str(value)).expanduser().resolve())
-
-
 def get_key(row: pd.Series) -> str:
+    """Use class folder plus basename so queues remain portable across machines."""
+    class_name = row.get("class_name")
+    if pd.isna(class_name) or not str(class_name).strip():
+        try:
+            class_name = LABEL_TO_CLASS[int(row.get("label"))]
+        except (KeyError, TypeError, ValueError):
+            class_name = "unknown_class"
+
     for column in ("resolved_path", "path"):
         value = row.get(column)
         if pd.notna(value) and str(value).strip():
-            return normalized_key(value)
+            return f"{class_name}/{Path(str(value)).name}"
     raise ValueError("Row has neither resolved_path nor path")
 
 
@@ -79,7 +88,9 @@ def validate_human_rows(review: pd.DataFrame) -> pd.DataFrame:
             try:
                 new_label = int(row.get("human_new_label"))
             except (TypeError, ValueError):
-                errors.append(f"row {index}: relabel requires human_new_label 0, 1, or 2")
+                errors.append(
+                    f"row {index}: relabel requires human_new_label 0, 1, or 2"
+                )
             else:
                 if new_label not in ALLOWED_LABELS:
                     errors.append(f"row {index}: invalid human_new_label={new_label}")
@@ -105,7 +116,9 @@ def main():
     selected["_merge_key"] = selected.apply(get_key, axis=1)
 
     if selected["_merge_key"].duplicated().any():
-        duplicates = selected.loc[selected["_merge_key"].duplicated(), "_merge_key"].tolist()
+        duplicates = selected.loc[
+            selected["_merge_key"].duplicated(), "_merge_key"
+        ].tolist()
         raise ValueError(f"Duplicate reviewed paths found: {duplicates[:10]}")
 
     decision_by_key = selected.set_index("_merge_key").to_dict(orient="index")
@@ -141,7 +154,7 @@ def main():
     if unmatched:
         raise ValueError(
             f"{len(unmatched)} human-reviewed paths were not found in the base queue. "
-            f"First paths: {unmatched[:5]}"
+            f"First keys: {unmatched[:5]}"
         )
 
     base = base.drop(columns=["_merge_key"])
