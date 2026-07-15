@@ -1,8 +1,8 @@
-# Optional dependency for the human-in-the-loop Moondream label-review pipeline.
-# Install after the CUDA-compatible PyTorch environment is working:
-#   uv pip install -r requirements-moondream.txt
+# Optional dependency for the Moondream label-review and test-comparison pipelines.
+# Install only after the CUDA-compatible PyTorch environment is working:
+#   uv pip install --upgrade -r requirements-moondream.txt
 #
-# Moondream 3.1 local inference uses the Photon runtime and downloads model
-# weights from Hugging Face on first use.
+# Moondream 3.1 requires a current Photon/Kestrel runtime. Older installations
+# may only recognize `moondream2` and `moondream3-preview`.
 
-moondream
+moondream>=1.3.0
