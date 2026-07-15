@@ -1,0 +1,41 @@
+{
+  "version": "bdc2026-moongdream-review-v1",
+  "status": "editable_assumption_pending_official_taxonomy_confirmation",
+  "purpose": "Human-in-the-loop review of suspicious training labels only",
+  "classes": {
+    "0": {
+      "name": "Recyclable",
+      "definition": "Non-electronic discarded items whose primary visible waste identity is recyclable material or packaging, such as paper, cardboard, plastic, glass, or metal."
+    },
+    "1": {
+      "name": "Electronic",
+      "definition": "Electrical or electronic devices, appliances, accessories, components, cables, circuit-containing objects, batteries, and similar e-waste."
+    },
+    "2": {
+      "name": "Organic",
+      "definition": "Food, plants, biological material, and other visibly biodegradable organic waste."
+    }
+  },
+  "decision_rules": [
+    "Use the primary discarded object rather than background decorations or incidental objects.",
+    "If an object clearly contains electronic or electrical components, prefer Electronic unless the official competition rule says otherwise.",
+    "If the image clearly depicts food, plant, or biological waste without a conflicting packaging convention, prefer Organic.",
+    "If the image is primarily non-electronic recyclable material or empty packaging, prefer Recyclable.",
+    "If food or organic contents and recyclable packaging are both central and the competition convention is unclear, return no label and require a second human review.",
+    "If multiple objects from different classes are present, return no label unless one primary waste item is unambiguous.",
+    "Advertisements, illustrations, screenshots, product catalog images, and unusually clean retail photos should be flagged for human review rather than automatically excluded.",
+    "Model confidence is advisory and must not be treated as a calibrated probability."
+  ],
+  "allowed_recommendations": [
+    "keep",
+    "review_relabel",
+    "exclude_ambiguous",
+    "needs_second_review"
+  ],
+  "safeguards": [
+    "Do not process competition test images.",
+    "Do not automatically relabel or exclude an image from Moondream output alone.",
+    "Require a human reviewer and written reason for relabel or exclude decisions.",
+    "Keep the original dataset unchanged and preserve an audit CSV."
+  ]
+}
